@@ -69,8 +69,13 @@ git status --porcelain
 ```
 - If output is non-empty → abort with: "shrink requires clean git state. Commit or stash first."
 - Identify target: file path + function name. Ask user via `AskUserQuestion` if ambiguous.
-- **Create a feature branch.** Default: `git checkout -b claude/shrink/<func-name>`. All shrink commits go on this branch, never on the current branch directly. Rationale: a 6-round shrink produces 6+ commits; keeping them on a throwaway branch lets the user merge cleanly, squash to one commit, or abandon entirely (`git branch -D claude/shrink/<func-name>`) without polluting `main`. Override with `--no-branch` to commit on the current branch (rare; only useful if the user has already created their own working branch).
-- Record the starting branch (`git rev-parse --abbrev-ref HEAD` before the checkout) so the final report can suggest the right merge target.
+- **Create a worktree.** Default:
+  ```bash
+  git worktree add ${SHRINK_STATE_DIR:-.shrink-state}/<func-name>/worktree -b claude/shrink/<func-name>
+  ```
+  All shrink work (file edits, commits) happens inside the worktree — the user's primary checkout stays on its current branch, untouched. Enables parallel shrinks on different functions simultaneously. Override with `--no-worktree` to fall back to `git checkout -b` on the primary checkout (rare; only if worktrees are unsupported in the repo).
+- Record the starting branch from the **primary** checkout: `git -C <git-root> rev-parse --abbrev-ref HEAD` (run this before creating the worktree, from the repo root of the target file).
+- The **target file path inside the worktree** is `${SHRINK_STATE_DIR:-.shrink-state}/<func-name>/worktree/<relative-path>`, where `<relative-path>` is the path of the target file relative to the git root. Use this worktree-internal path for all subsequent steps (black format, AST parse, codesieve, mutmut `paths_to_mutate`).
 - State dir: `${SHRINK_STATE_DIR:-.shrink-state}/<func-name>/`
 - Record baseline:
   - Format the file: `uv run --with black black --quiet <file>` (rewrites in place — commit any whitespace-only diff first if present)
@@ -155,8 +160,8 @@ For each round N from 1 to max_rounds:
 Record reason in `<state-dir>/round-N/result.json`.
 
 **3e. If accepted**:
-- Apply candidate to the actual source file.
-- `git add -A && git commit -m "shrink round N: <func> <baseline_loc> -> <new_loc> (<reduction>%)"`
+- Apply candidate to the target file inside the worktree (`<state-dir>/worktree/<relative-path>`).
+- From `<state-dir>/worktree/`: `git add -A && git commit -m "shrink round N: <func> <baseline_loc> -> <new_loc> (<reduction>%)"`
 - Update `state.json` with new baseline.
 - Reset consecutive_rejects = 0.
 
@@ -178,20 +183,24 @@ Write `<state-dir>/summary.md`:
 - Git log of shrink commits (`git log --oneline <starting-branch>..HEAD`)
 - Mutation kill rate before/after
 
-**Branch handoff.** The skill leaves you on the `claude/shrink/<func-name>` branch. Print these three options to the terminal so the user can pick:
+**Worktree handoff.** The shrink ran in a dedicated worktree — the user's primary checkout was never touched. Print these options to the terminal:
 
 ```
-You're on branch: claude/shrink/<func-name>  (N commits ahead of <starting-branch>)
+Worktree: <state-dir>/worktree/
+Branch:   claude/shrink/<func-name>  (N commits ahead of <starting-branch>)
+Primary checkout is still on: <starting-branch>
 
 To keep all shrink rounds in history (each round as its own commit):
-  git checkout <starting-branch> && git merge --no-ff claude/shrink/<func-name>
+  git merge --no-ff claude/shrink/<func-name>
 
-To squash everything into one clean commit on <starting-branch>:
-  git checkout <starting-branch> && git merge --squash claude/shrink/<func-name> && git commit -m "shrink <func>: <orig-loc> → <final-loc> (<reduction>%)"
+To squash everything into one clean commit:
+  git merge --squash claude/shrink/<func-name> && git commit -m "shrink <func>: <orig-loc> -> <final-loc> (<reduction>%)"
 
-To abandon the shrink entirely:
-  git checkout <starting-branch> && git branch -D claude/shrink/<func-name>
+To abandon the shrink entirely (removes worktree + branch):
+  git worktree remove <state-dir>/worktree && git branch -D claude/shrink/<func-name>
 ```
+
+(The merge commands above run from the primary checkout, already on `<starting-branch>`.)
 
 Print a 5-line summary to terminal pointing at the report file.
 
@@ -209,6 +218,7 @@ Print a 5-line summary to terminal pointing at the report file.
 `${SHRINK_STATE_DIR:-.shrink-state}/<func-name>/`
 
 ```
+worktree/                       # git worktree — full repo copy, shrink branch checked out
 state.json                      # baseline + current LOC, grade, round count
 tests.py                        # frozen adversarial test suite
 mutation_baseline.txt           # initial mutmut output

@@ -23,5 +23,6 @@ Defaults are in the SKILL. The user may override via flags in `$ARGUMENTS`:
 - `--rounds=N` (default 6)
 - `--min-reduction=P` (default 5, percent)
 - `--no-mutation` (skip mutation gate — DANGEROUS, warn the user)
+- `--no-worktree` (fall back to `git checkout -b` instead of `git worktree add`; use only if worktrees unsupported)
 
 State directory: `${SHRINK_STATE_DIR:-.shrink-state}/<func-name>/`
