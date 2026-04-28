@@ -69,6 +69,8 @@ git status --porcelain
 ```
 - If output is non-empty → abort with: "shrink requires clean git state. Commit or stash first."
 - Identify target: file path + function name. Ask user via `AskUserQuestion` if ambiguous.
+- **Create a feature branch.** Default: `git checkout -b claude/shrink/<func-name>`. All shrink commits go on this branch, never on the current branch directly. Rationale: a 6-round shrink produces 6+ commits; keeping them on a throwaway branch lets the user merge cleanly, squash to one commit, or abandon entirely (`git branch -D claude/shrink/<func-name>`) without polluting `main`. Override with `--no-branch` to commit on the current branch (rare; only useful if the user has already created their own working branch).
+- Record the starting branch (`git rev-parse --abbrev-ref HEAD` before the checkout) so the final report can suggest the right merge target.
 - State dir: `${SHRINK_STATE_DIR:-.shrink-state}/<func-name>/`
 - Record baseline:
   - Format the file: `uv run --with black black --quiet <file>` (rewrites in place — commit any whitespace-only diff first if present)
@@ -171,10 +173,25 @@ Record reason in `<state-dir>/round-N/result.json`.
 Re-run mutmut on the final shrunk version (sanity check the suite still kills mutants on the new code).
 
 Write `<state-dir>/summary.md`:
-- Original LOC vs final LOC, % reduction
-- Per-round table: round, status (accepted/rejected/why), LOC, codesieve grade, mutation kill rate
-- Git log of shrink commits (`git log --oneline --grep="shrink round"`)
+- Original LOC vs final LOC, % reduction (using the non-blank, non-comment metric)
+- Per-round table: round, status (accepted/rejected/why), LOC, readability score, mutation kill rate
+- Git log of shrink commits (`git log --oneline <starting-branch>..HEAD`)
 - Mutation kill rate before/after
+
+**Branch handoff.** The skill leaves you on the `claude/shrink/<func-name>` branch. Print these three options to the terminal so the user can pick:
+
+```
+You're on branch: claude/shrink/<func-name>  (N commits ahead of <starting-branch>)
+
+To keep all shrink rounds in history (each round as its own commit):
+  git checkout <starting-branch> && git merge --no-ff claude/shrink/<func-name>
+
+To squash everything into one clean commit on <starting-branch>:
+  git checkout <starting-branch> && git merge --squash claude/shrink/<func-name> && git commit -m "shrink <func>: <orig-loc> → <final-loc> (<reduction>%)"
+
+To abandon the shrink entirely:
+  git checkout <starting-branch> && git branch -D claude/shrink/<func-name>
+```
 
 Print a 5-line summary to terminal pointing at the report file.
 
