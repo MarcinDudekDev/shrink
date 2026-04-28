@@ -252,6 +252,7 @@ Each round runs: 1 Sonnet-class rewrite + 1 pytest + 1 codesieve (mutmut only at
 |---------|--------------|--------|
 | Adversary's tests fail on original | Tests assume invariants the function doesn't actually have | Abort. Surface to user. Don't try to "fix" the tests. |
 | Mutation kill rate < 50% | Tests are vacuous | Abort. Suggest user write tests manually first. |
+| mutmut crashes with recursion error or `'NoneType' object has no attribute 'max_stack_depth'` on the **target file** | FastAPI, SSE, or async event-loop code triggers mutmut 3.x's `sys.settrace` re-entrancy bug. mutmut 2.x is Python 3.14-incompatible; no fix exists. | Warn: "Mutation gate skipped — mutmut incompatible with async/SSE code." Continue without the gate. Rely on test suite quality instead. |
 | Every round rejected | Function may already be near-minimal | Stop after 3 rejects. Report "function is at or near a local minimum." |
 | codesieve grade drops every round | Shrinker is gaming via density | Stop. Report needed. The metric/floor combo failed. |
 | Tests break after acceptance | Test suite was incomplete despite mutation gate | `git revert` last shrink commit. Surface to user. |
