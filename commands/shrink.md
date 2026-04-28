@@ -24,5 +24,7 @@ Defaults are in the SKILL. The user may override via flags in `$ARGUMENTS`:
 - `--min-reduction=P` (default 5, percent)
 - `--no-mutation` (skip mutation gate — DANGEROUS, warn the user)
 - `--no-worktree` (fall back to `git checkout -b` instead of `git worktree add`; use only if worktrees unsupported)
+- `--adversary-model=<model>` (default: claude; use an OpenRouter model ID to route Adversary through an OpenRouter-compatible agent — requires OPENROUTER_API_KEY)
+- `--shrinker-model=<model>` (default: claude; same routing for the Shrinker)
 
 State directory: `${SHRINK_STATE_DIR:-.shrink-state}/<func-name>/`

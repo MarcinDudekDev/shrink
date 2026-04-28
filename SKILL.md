@@ -76,6 +76,7 @@ git status --porcelain
   All shrink work (file edits, commits) happens inside the worktree — the user's primary checkout stays on its current branch, untouched. Enables parallel shrinks on different functions simultaneously. Override with `--no-worktree` to fall back to `git checkout -b` on the primary checkout (rare; only if worktrees are unsupported in the repo).
 - Record the starting branch from the **primary** checkout: `git -C <git-root> rev-parse --abbrev-ref HEAD` (run this before creating the worktree, from the repo root of the target file).
 - The **target file path inside the worktree** is `${SHRINK_STATE_DIR:-.shrink-state}/<func-name>/worktree/<relative-path>`, where `<relative-path>` is the path of the target file relative to the git root. Use this worktree-internal path for all subsequent steps (black format, AST parse, codesieve, mutmut `paths_to_mutate`).
+- **Parse model flags** from `$ARGUMENTS`: `--adversary-model=<name>` and `--shrinker-model=<name>`. Default both to `claude`. If either is non-`claude`, check that `OPENROUTER_API_KEY` is set; abort with "Set OPENROUTER_API_KEY to use non-Claude models." Print "Adversary model: <X>, Shrinker model: <Y>" for transparency.
 - State dir: `${SHRINK_STATE_DIR:-.shrink-state}/<func-name>/`
 - Record baseline:
   - Format the file: `uv run --with black black --quiet <file>` (rewrites in place — commit any whitespace-only diff first if present)
@@ -87,7 +88,9 @@ git status --porcelain
 
 ### 1. Adversarial test generation
 
-Spawn `general-purpose` subagent with:
+**Model routing**: If `--adversary-model` is not `claude`, route through an OpenRouter-compatible agent instead of spawning `general-purpose`. Pass the full adversary prompt below plus an explicit "write the file to `<state-dir>/tests.py`" instruction and the target model name. Verify the file exists after the agent returns.
+
+If `--adversary-model` is `claude` (default), spawn `general-purpose` subagent with:
 
 > Read `<file>`. Write a pytest test file at `<state-dir>/tests.py` that aggressively tests `<func>`. Requirements:
 > - At least 10 example-based tests covering the obvious behavior, all argument types in the signature, and edge cases the original author may have missed (empty inputs, extremes, type variations, boundary conditions, off-by-one).
@@ -135,7 +138,7 @@ Defaults: `max_rounds=6`, `min_reduction_pct=5`, `max_consecutive_rejects=3`.
 
 For each round N from 1 to max_rounds:
 
-**3a. Spawn Shrinker subagent** (`general-purpose`, fresh context):
+**3a. Spawn Shrinker subagent** (fresh context — `general-purpose` for `--shrinker-model=claude`, OpenRouter-compatible agent otherwise with the same prompt + explicit Write-tool instruction):
 
 > Read `<current code>`. Read `<original docstring or user-provided spec>`. Rewrite `<func>` to be **strictly smaller** when formatted with black. Constraints:
 > - You may not change the public signature.
